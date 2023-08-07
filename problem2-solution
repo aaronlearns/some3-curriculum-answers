@@ -1,0 +1,127 @@
+from hub import light_matrix, port
+import runloop
+import force_sensor
+
+from math import *
+
+# Renamed for easier access.
+m = light_matrix
+
+
+# Display image on-screen
+def display_image():
+    m.show_image(45)
+
+# Returns a singlular list containing the intensities of each pixel in the grid. Assumes the intensity is 0 if no data is retrieved.
+def get_grid_intensity():
+
+    # Declare list (assume the intensity is 0 if there's lost data).
+    intensities = [0] * 25
+
+    # Iterate over all squares and store light intensity value in "intensities"
+    for x in range (0,5):
+        for y in range (0,5):
+            # Getting the intensity of the current pixel
+            current_intensity = m.get_pixel(x,y)
+
+            # Storing that intensity in the appropriate element
+            intensity_num = (5 * x) + y
+            intensities[intensity_num] = current_intensity
+    return intensities
+
+
+"""
+Gets the force input from the sensor and converts it.
+Returns:
+[INT(0 - 100)] new - The intensity from the force sensor scaled to be between 0 and 100.
+"""
+def get_sensor_input():
+
+    """
+        To match the light intensity of the pixels (which we'll call pct) to the intensity from the force sensor, (which we'll call f_raw)
+        we need to scale the force sensor's input as a percentage. 0% would be the user applying no force, and 100% would be the user
+        applying maxiumum force.
+
+        Raw input force: 380 < f_raw < 685 (Taken from print statement sampling)
+        Light intensity: 0 < pct < 100
+
+        We can change the scale of f_raw using algebra
+        Assume: 380 < f_raw < 685
+            => 0 < f_raw - 380 < 305             Subtract 380
+            => 0 < (f_raw - 380)*(100/305) < 100 Multiply by 100/305 (for scaling purposes)
+
+        We now have a variable, which we will call "new" that is scaled on 0 to 100 like a percentage.
+    """
+
+    # Taking in the raw force and scaling it to match light intensity.
+    raw = force_sensor.raw(port.A)
+    new = (raw - 380)* (100 / 305)
+
+    # Casting new as an int to smooth things out later.
+    new = int(new)
+
+    return new
+
+
+
+"""
+Gets a set of new intensities based on the force input
+[LIST[INT(0 - 100)] * 25] grid - A 25-long list of numbers between 0 and 100, the intensities of the original grid.
+[INT(0 - 100)] force - The percentage of force recieved by the sensor.
+
+Returns:
+[LIST[INT(0 - 100)] * 25] new_grid - A new list of intensities to update the grid.
+"""
+def get_new_grid(grid, force):
+
+    new_grid = [0] * 25
+    # We iterate over every square in the grid
+    for x in range(0,5):
+        for y in range(0,5):
+
+            # Retrieving the appropriate intesity from the grid.
+            intensity_num = (5 * x) + y
+            intensity = grid[intensity_num]
+
+            # The distance between the intensity and force.
+            diff = abs(force - intensity)
+
+            new_grid[intensity_num] = diff
+    
+    return new_grid
+
+"""
+[LIST[INT(0 - 100)] * 25] new_grid - A 25-long list of new intensities to be shown on the screen.
+Returns:
+[INT] 0 - Successful exit code
+"""
+def update_grid(new_grid):
+    
+    for x in range(0,5):
+        for y in range(0,5):
+
+            # Updating the grid
+            intensity = new_grid[(5 * x) + y]
+            m.set_pixel(x, y, intensity)
+    return 0
+
+
+async def main():
+
+    # Display the image and store data for later usage
+    display_image()
+    first_grid = get_grid_intensity()
+    
+    while True:
+
+        # Get user force
+        force_input = get_sensor_input()
+
+        # Update grid based on difference from the original image (this is why we stored it in the beginning)
+        next_grid = get_new_grid(first_grid, force_input)
+        update_grid(next_grid)
+
+        # Wait .1 seconds
+        await runloop.sleep_ms(100)
+
+runloop.run(main())
