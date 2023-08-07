@@ -1,0 +1,18 @@
+from hub import light_matrix
+from app import display
+import runloop
+
+from math import *
+
+async def display():
+    step = 0
+
+    while True:
+        sequence_num = step % 8
+
+        # Compass images are stored numbers 27 through 34
+        light_matrix.show_image(sequence_num + 27)
+        step += 1
+        await runloop.sleep_ms(100)
+
+runloop.run(display())
