@@ -1,0 +1,127 @@
+from hub import light_matrix, motion_sensor
+import math
+import runloop
+from math import *
+
+"""
+Assigns clock number based on where the hub is tilting, using a reference angle (angle) and the direction of roll and pitch (rd, pd).
+[FLOAT] angle - Reference angle from atan(roll / pitch)
+[INT] rd - Direction of roll (±1) 
+[INT] pd - Direction of pitch (±1)
+
+Returns:
+[INT] clock_num (0 - 11)
+"""
+def assign_clock_number(angle, rd, pd):
+
+    """
+        This is mathematically dense, and there's more than one way to do this.
+        
+        First, we'll change the system of angles such that it falls in the range [0, 2*pi] and goes counter-clockwise
+        as it increases, like in the Cartesian plane.
+
+        The angle this function recieves is a reference angle, meaning it never goes above 90º, so to find
+        the actual angle may take some calculation. This'll start with finding the quadrant based on roll and
+        pitch direction.
+    """
+    x = pd
+    y = rd
+
+    # This is dense but better than doing a bunch of conditions.
+    quadrant = abs(x - y) + int(x == y) + 2*int(y < 0)
+
+    # Take the complementary angle for calculation purposes shown below
+    comp = abs(angle - (pi / 2))
+
+    """
+        If we look at the changes we should make to an angle based on the quadrant...
+
+        Quadrant 1
+        angle = angle
+
+        Q2
+        angle = comp + comp + angle
+
+        Q3
+        angle = angle + 2*(comp + angle)
+
+        Q4
+        angle = comp + 3*(comp + angle)
+
+        Notice any patterns?
+    """
+    # Again, very dense, but saves us a few lines of code doing several conditions.
+    angle = int(quadrant % 2 != 0)*(angle) + int(quadrant % 2 == 0)*(comp) + (quadrant - 1)*(comp + angle)
+
+    # Shows the angle as the coefficient of pi
+    # print("angle / pi: {}".format(angle / pi))
+
+    
+    """
+        Lower angle of each clock region is (pi / 6) * clock_num + (pi / 12) = angle
+
+        We can do some algebra to figure out the clock_num in terms of the angle (in radians)
+
+        Let angle = A; clock_num = C
+        Assume: (pi / 6) * C + (pi / 12) = A
+              =>(pi / 6) * C = A - (pi / 12)                  [subtract pi / 12]
+              => C = ((A / (pi / 6)) - ((pi / 6) / (pi / 12)) [divide by pi / 6]
+              => C = ((6 * A) / pi) - (1 / 2)                 [simplification]
+    """
+
+    # Use formula above
+    clock_num = math.floor(((6 * angle) / pi) - .5)
+
+    """
+        Now all that's left to do is to change the system from the Cartesian plane to the one on the clock face. This
+        Requires two transformations:
+        1 -- In the Cartesian plane, an angle goes counter-clockwise as the measure gets bigger. On the clock face, the angle
+        goes clockwise as the measure gets bigger. We'll make this change by reflecting the system about the origin.
+        
+        2 -- The Cartesian plane starts at the "3" position on the clock, after the first transformation, it'll start at "9"; it
+        needs to start at "12". We'll achieve this by rotating the system 90º clockwise.
+    """
+
+    # Transformation 1
+    clock_num = abs(clock_num - 12) % 12
+    
+    # Tranformation 2
+    clock_num = (clock_num + 3) % 12 
+    
+    # print(clock_num)
+
+    return clock_num
+
+async def main():
+
+    clock_num = 0
+    while True:
+        yrp = motion_sensor.tilt_angles()
+        # print("Roll: {} Pitch: {}".format(yrp[1], yrp[2]))
+
+        # Find arctan(pitch / roll) to get angle
+        roll = yrp[1]
+        pitch = yrp[2]
+
+        # Implicit declaration
+        rp_angle = 0
+
+        # Get the reference angle using arctan, handling cases where pitch is zero
+        try: rp_angle = atan(abs(roll / pitch))
+        except ZeroDivisionError: pass
+
+        # Get the direction of pitch and roll, handling cases where each is zero
+        try: pitch_dir = pitch / abs(pitch)
+        except ZeroDivisionError: pitch_dir = 0
+
+        try: roll_dir = roll / abs(roll)
+        except ZeroDivisionError : roll_dir = 0
+        
+        # "15" is the number of the clock hand positioned at 12
+        clock_num = assign_clock_number(rp_angle, roll_dir, pitch_dir)
+        light_matrix.show_image(15 + clock_num)
+
+
+        await runloop.sleep_ms(100)
+
+runloop.run(main())
